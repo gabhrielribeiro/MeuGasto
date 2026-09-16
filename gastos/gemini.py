@@ -42,7 +42,27 @@ RESPONSE_SCHEMA = {
 
 
 def _processar_resposta(response):
-    texto = (response.text or "").strip()
+    # O SDK pode disponibilizar o resultado estruturado em `parsed`.
+    parsed = getattr(response, "parsed", None)
+    if parsed:
+        if hasattr(parsed, "model_dump"):
+            data = parsed.model_dump()
+        elif isinstance(parsed, dict):
+            data = parsed
+        else:
+            data = None
+        if data:
+            if data.get("erro"):
+                return None
+            data["valor"] = Decimal(str(data["valor"]))
+            return data
+
+    texto = (getattr(response, "text", None) or "").strip()
+    if not texto:
+        # Não tente fazer json.loads em resposta vazia. Isso também permite
+        # que o chamador tente outro modelo quando o primeiro não gerar saída.
+        raise RuntimeError("Gemini retornou resposta vazia.")
+
     data = json.loads(texto)
     if data.get("erro"):
         return None
@@ -52,7 +72,23 @@ def _processar_resposta(response):
 
 def _is_unavailable_error(exc):
     texto = str(exc).upper()
-    return "503" in texto or "UNAVAILABLE" in texto or "HIGH DEMAND" in texto
+    return (
+        "503" in texto
+        or "UNAVAILABLE" in texto
+        or "HIGH DEMAND" in texto
+        or "RESPOSTA VAZIA" in texto
+    )
+
+
+def _log_diagnostico(response):
+    try:
+        candidatos = getattr(response, "candidates", None) or []
+        if candidatos:
+            candidato = candidatos[0]
+            print("Gemini finish_reason:", getattr(candidato, "finish_reason", None))
+            print("Gemini safety_ratings:", getattr(candidato, "safety_ratings", None))
+    except Exception:
+        pass
 
 
 def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mimetype: str = "audio/ogg"):
@@ -84,10 +120,14 @@ def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mi
                         "response_mime_type": "application/json",
                         "response_schema": RESPONSE_SCHEMA,
                         "temperature": 0,
-                        "max_output_tokens": 120,
+                        "max_output_tokens": 256,
                     },
                 )
-                return _processar_resposta(response)
+                try:
+                    return _processar_resposta(response)
+                except RuntimeError:
+                    _log_diagnostico(response)
+                    raise
             except Exception as exc:
                 ultimo_erro = exc
                 print(f"Gemini: erro: {exc}")
