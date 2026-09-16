@@ -17,8 +17,10 @@ Se não houver data explícita, use data_atual.
 Não invente valor. Se não conseguir identificar claramente um gasto, use erro="nao_identificado".
 """
 
+# Modelos em ordem de tentativa. O primeiro vem de GEMINI_MODEL nas settings.
+# O segundo é o modelo sugerido pelo próprio erro atual da API.
 FALLBACK_MODELS = [
-    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash-lite",
     "gemini-2.0-flash-lite",
 ]
 
@@ -42,7 +44,6 @@ RESPONSE_SCHEMA = {
 
 
 def _processar_resposta(response):
-    # O SDK pode disponibilizar o resultado estruturado em `parsed`.
     parsed = getattr(response, "parsed", None)
     if parsed:
         if hasattr(parsed, "model_dump"):
@@ -59,8 +60,6 @@ def _processar_resposta(response):
 
     texto = (getattr(response, "text", None) or "").strip()
     if not texto:
-        # Não tente fazer json.loads em resposta vazia. Isso também permite
-        # que o chamador tente outro modelo quando o primeiro não gerar saída.
         raise RuntimeError("Gemini retornou resposta vazia.")
 
     data = json.loads(texto)
@@ -70,14 +69,21 @@ def _processar_resposta(response):
     return data
 
 
-def _is_unavailable_error(exc):
+def _is_retryable_error(exc):
     texto = str(exc).upper()
     return (
         "503" in texto
         or "UNAVAILABLE" in texto
         or "HIGH DEMAND" in texto
         or "RESPOSTA VAZIA" in texto
+        or "429" in texto
+        or "RESOURCE_EXHAUSTED" in texto
     )
+
+
+def _is_model_not_found_error(exc):
+    texto = str(exc).upper()
+    return "404" in texto or "NOT_FOUND" in texto or "NO LONGER AVAILABLE" in texto
 
 
 def _log_diagnostico(response):
@@ -131,9 +137,17 @@ def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mi
             except Exception as exc:
                 ultimo_erro = exc
                 print(f"Gemini: erro: {exc}")
-                if not _is_unavailable_error(exc):
-                    raise
-                if tentativa + 1 < tentativas:
-                    time.sleep(1)
+
+                # Modelo descontinuado/inexistente: pula imediatamente para o próximo.
+                if _is_model_not_found_error(exc):
+                    break
+
+                # Erros temporários: repete o modelo atual antes do fallback.
+                if _is_retryable_error(exc):
+                    if tentativa + 1 < tentativas:
+                        time.sleep(1)
+                    continue
+
+                raise
 
     raise RuntimeError(f"Gemini indisponível temporariamente. Último erro: {ultimo_erro}")
