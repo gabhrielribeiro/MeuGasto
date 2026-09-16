@@ -17,8 +17,6 @@ Se não houver data explícita, use data_atual.
 Não invente valor. Se não conseguir identificar claramente um gasto, use erro="nao_identificado".
 """
 
-# Modelos em ordem de tentativa. O primeiro vem de GEMINI_MODEL nas settings.
-# O segundo é o modelo sugerido pelo próprio erro atual da API.
 FALLBACK_MODELS = [
     "gemini-3.5-flash-lite",
     "gemini-2.0-flash-lite",
@@ -62,7 +60,20 @@ def _processar_resposta(response):
     if not texto:
         raise RuntimeError("Gemini retornou resposta vazia.")
 
-    data = json.loads(texto)
+    # Alguns retornos podem vir cercados por markdown, mesmo com JSON solicitado.
+    if texto.startswith("```"):
+        texto = texto.replace("```json", "", 1).replace("```", "").strip()
+
+    try:
+        data = json.loads(texto)
+    except json.JSONDecodeError:
+        # Tenta recuperar somente o objeto JSON caso o modelo tenha acrescentado texto.
+        inicio = texto.find("{")
+        fim = texto.rfind("}")
+        if inicio < 0 or fim <= inicio:
+            raise
+        data = json.loads(texto[inicio:fim + 1])
+
     if data.get("erro"):
         return None
     data["valor"] = Decimal(str(data["valor"]))
@@ -76,6 +87,8 @@ def _is_retryable_error(exc):
         or "UNAVAILABLE" in texto
         or "HIGH DEMAND" in texto
         or "RESPOSTA VAZIA" in texto
+        or "EXPECTING VALUE" in texto
+        or "JSONDECODEERROR" in texto
         or "429" in texto
         or "RESOURCE_EXHAUSTED" in texto
     )
@@ -138,11 +151,9 @@ def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mi
                 ultimo_erro = exc
                 print(f"Gemini: erro: {exc}")
 
-                # Modelo descontinuado/inexistente: pula imediatamente para o próximo.
                 if _is_model_not_found_error(exc):
                     break
 
-                # Erros temporários: repete o modelo atual antes do fallback.
                 if _is_retryable_error(exc):
                     if tentativa + 1 < tentativas:
                         time.sleep(1)
