@@ -60,14 +60,12 @@ def _processar_resposta(response):
     if not texto:
         raise RuntimeError("Gemini retornou resposta vazia.")
 
-    # Alguns retornos podem vir cercados por markdown, mesmo com JSON solicitado.
     if texto.startswith("```"):
         texto = texto.replace("```json", "", 1).replace("```", "").strip()
 
     try:
         data = json.loads(texto)
     except json.JSONDecodeError:
-        # Tenta recuperar somente o objeto JSON caso o modelo tenha acrescentado texto.
         inicio = texto.find("{")
         fim = texto.rfind("}")
         if inicio < 0 or fim <= inicio:
@@ -89,6 +87,7 @@ def _is_retryable_error(exc):
         or "RESPOSTA VAZIA" in texto
         or "EXPECTING VALUE" in texto
         or "JSONDECODEERROR" in texto
+        or "UNTERMINATED STRING" in texto
         or "429" in texto
         or "RESOURCE_EXHAUSTED" in texto
     )
@@ -128,6 +127,8 @@ def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mi
     ultimo_erro = None
 
     for indice, modelo in enumerate(modelos):
+        # O modelo principal recebe uma segunda tentativa; erros de JSON também
+        # acionam o fallback para evitar devolver 400 ao WhatsApp.
         tentativas = 2 if indice == 0 else 1
         for tentativa in range(tentativas):
             try:
@@ -144,7 +145,7 @@ def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mi
                 )
                 try:
                     return _processar_resposta(response)
-                except RuntimeError:
+                except (RuntimeError, json.JSONDecodeError):
                     _log_diagnostico(response)
                     raise
             except Exception as exc:
