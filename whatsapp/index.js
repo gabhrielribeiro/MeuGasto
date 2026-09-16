@@ -22,7 +22,20 @@ client.on('message', async (message) => {
     };
 
     if (message.hasMedia) {
-      console.log('Mídia recebida. Baixando áudio...');
+      console.log('Mídia recebida. Preparando áudio...');
+
+      // O WhatsApp Web passou a expor o ID serializado em "$1" em algumas
+      // versões. whatsapp-web.js ainda consulta "_serialized" em downloadMedia().
+      // Recriamos o valor esperado antes de chamar a biblioteca.
+      if (message.id && !message.id._serialized && message.id.$1) {
+        message.id._serialized = message.id.$1;
+      }
+
+      if (message.id && !message.id._serialized && message.id.remote && message.id.id) {
+        message.id._serialized = `${message.id.fromMe}_${message.id.remote}_${message.id.id}`;
+      }
+
+      console.log('ID serializado:', message.id?._serialized || 'não encontrado');
       const media = await message.downloadMedia();
       console.log('MIME recebido:', media?.mimetype);
 
@@ -32,7 +45,6 @@ client.on('message', async (message) => {
 
         if (audioBuffer.length <= 10 * 1024 * 1024) {
           payload.audio_base64 = media.data;
-          // O Gemini aceita audio/ogg para OGG Vorbis.
           payload.audio_mimetype = media.mimetype.split(';')[0].trim();
         } else {
           await message.reply('O áudio é muito grande. Envie uma mensagem de voz menor.');
