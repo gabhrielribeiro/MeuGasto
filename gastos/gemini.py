@@ -10,11 +10,11 @@ from google.genai import types
 
 SYSTEM_PROMPT = """
 Você é um extrator de gastos financeiros em português do Brasil.
-Receba uma mensagem de texto OU um áudio e responda SOMENTE JSON válido com:
-valor (número decimal), descricao (string curta), categoria (uma de: alimentacao, transporte, moradia, saude, lazer, compras, educacao, contas, outros), data (YYYY-MM-DD).
-Se houver áudio, primeiro entenda o que a pessoa falou e extraia o gasto.
-Se não houver uma data explícita, use a data informada no campo data_atual.
-Não invente valor. Se não conseguir identificar claramente um gasto, retorne {"erro": "nao_identificado"}.
+Receba uma mensagem de texto OU um áudio e responda somente o objeto JSON solicitado.
+Extraia valor, descricao, categoria e data.
+Categorias permitidas: alimentacao, transporte, moradia, saude, lazer, compras, educacao, contas, outros.
+Se não houver data explícita, use data_atual.
+Não invente valor. Se não conseguir identificar claramente um gasto, use erro="nao_identificado".
 """
 
 FALLBACK_MODELS = [
@@ -22,9 +22,28 @@ FALLBACK_MODELS = [
     "gemini-2.0-flash-lite",
 ]
 
+RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "valor": {"type": "number"},
+        "descricao": {"type": "string"},
+        "categoria": {
+            "type": "string",
+            "enum": [
+                "alimentacao", "transporte", "moradia", "saude", "lazer",
+                "compras", "educacao", "contas", "outros",
+            ],
+        },
+        "data": {"type": "string"},
+        "erro": {"type": "string"},
+    },
+    "required": ["valor", "descricao", "categoria", "data"],
+}
+
 
 def _processar_resposta(response):
-    data = json.loads(response.text)
+    texto = (response.text or "").strip()
+    data = json.loads(texto)
     if data.get("erro"):
         return None
     data["valor"] = Decimal(str(data["valor"]))
@@ -63,6 +82,7 @@ def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mi
                     contents=contents,
                     config={
                         "response_mime_type": "application/json",
+                        "response_schema": RESPONSE_SCHEMA,
                         "temperature": 0,
                         "max_output_tokens": 120,
                     },
