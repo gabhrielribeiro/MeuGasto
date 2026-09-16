@@ -10,103 +10,32 @@ from google.genai import types
 
 SYSTEM_PROMPT = """
 Você é um extrator de gastos financeiros em português do Brasil.
-Receba uma mensagem de texto OU um áudio e responda somente o objeto JSON solicitado.
-Extraia valor, descricao, categoria e data.
-Categorias permitidas: alimentacao, transporte, moradia, saude, lazer, compras, educacao, contas, outros.
-Se não houver data explícita, use data_atual.
-Não invente valor. Se não conseguir identificar claramente um gasto, use erro="nao_identificado".
+Receba uma mensagem de texto OU um áudio e responda SOMENTE JSON válido com:
+valor (número decimal), descricao (string curta), categoria (uma de: alimentacao, transporte, moradia, saude, lazer, compras, educacao, contas, outros), data (YYYY-MM-DD).
+Se houver áudio, primeiro entenda o que a pessoa falou e extraia o gasto.
+Se não houver uma data explícita, use a data informada no campo data_atual.
+Não invente valor. Se não conseguir identificar claramente um gasto, retorne {"erro": "nao_identificado"}.
 """
 
+# O primeiro modelo vem do .env. Os seguintes servem como fallback caso o
+# modelo principal esteja temporariamente indisponível (503/high demand).
 FALLBACK_MODELS = [
-    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite",
     "gemini-2.0-flash-lite",
 ]
 
-RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "valor": {"type": "number"},
-        "descricao": {"type": "string"},
-        "categoria": {
-            "type": "string",
-            "enum": [
-                "alimentacao", "transporte", "moradia", "saude", "lazer",
-                "compras", "educacao", "contas", "outros",
-            ],
-        },
-        "data": {"type": "string"},
-        "erro": {"type": "string"},
-    },
-    "required": ["valor", "descricao", "categoria", "data"],
-}
-
 
 def _processar_resposta(response):
-    parsed = getattr(response, "parsed", None)
-    if parsed:
-        if hasattr(parsed, "model_dump"):
-            data = parsed.model_dump()
-        elif isinstance(parsed, dict):
-            data = parsed
-        else:
-            data = None
-        if data:
-            if data.get("erro"):
-                return None
-            data["valor"] = Decimal(str(data["valor"]))
-            return data
-
-    texto = (getattr(response, "text", None) or "").strip()
-    if not texto:
-        raise RuntimeError("Gemini retornou resposta vazia.")
-
-    if texto.startswith("```"):
-        texto = texto.replace("```json", "", 1).replace("```", "").strip()
-
-    try:
-        data = json.loads(texto)
-    except json.JSONDecodeError:
-        inicio = texto.find("{")
-        fim = texto.rfind("}")
-        if inicio < 0 or fim <= inicio:
-            raise
-        data = json.loads(texto[inicio:fim + 1])
-
+    data = json.loads(response.text)
     if data.get("erro"):
         return None
     data["valor"] = Decimal(str(data["valor"]))
     return data
 
 
-def _is_retryable_error(exc):
+def _is_unavailable_error(exc):
     texto = str(exc).upper()
-    return (
-        "503" in texto
-        or "UNAVAILABLE" in texto
-        or "HIGH DEMAND" in texto
-        or "RESPOSTA VAZIA" in texto
-        or "EXPECTING VALUE" in texto
-        or "JSONDECODEERROR" in texto
-        or "UNTERMINATED STRING" in texto
-        or "429" in texto
-        or "RESOURCE_EXHAUSTED" in texto
-    )
-
-
-def _is_model_not_found_error(exc):
-    texto = str(exc).upper()
-    return "404" in texto or "NOT_FOUND" in texto or "NO LONGER AVAILABLE" in texto
-
-
-def _log_diagnostico(response):
-    try:
-        candidatos = getattr(response, "candidates", None) or []
-        if candidatos:
-            candidato = candidatos[0]
-            print("Gemini finish_reason:", getattr(candidato, "finish_reason", None))
-            print("Gemini safety_ratings:", getattr(candidato, "safety_ratings", None))
-    except Exception:
-        pass
+    return "503" in texto or "UNAVAILABLE" in texto or "HIGH DEMAND" in texto
 
 
 def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mimetype: str = "audio/ogg"):
@@ -127,39 +56,25 @@ def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mi
     ultimo_erro = None
 
     for indice, modelo in enumerate(modelos):
-        # O modelo principal recebe uma segunda tentativa; erros de JSON também
-        # acionam o fallback para evitar devolver 400 ao WhatsApp.
+        # Faz até 2 tentativas no modelo principal antes de trocar de modelo.
         tentativas = 2 if indice == 0 else 1
         for tentativa in range(tentativas):
             try:
-                print(f"Gemini: {modelo} ({tentativa + 1}/{tentativas})")
+                print(f"Gemini: tentando modelo {modelo} (tentativa {tentativa + 1}/{tentativas})")
                 response = client.models.generate_content(
                     model=modelo,
                     contents=contents,
-                    config={
-                        "response_mime_type": "application/json",
-                        "response_schema": RESPONSE_SCHEMA,
-                        "temperature": 0,
-                        "max_output_tokens": 256,
-                    },
+                    config={"response_mime_type": "application/json"},
                 )
-                try:
-                    return _processar_resposta(response)
-                except (RuntimeError, json.JSONDecodeError):
-                    _log_diagnostico(response)
-                    raise
+                return _processar_resposta(response)
             except Exception as exc:
                 ultimo_erro = exc
-                print(f"Gemini: erro: {exc}")
+                print(f"Gemini: erro no modelo {modelo}: {exc}")
+                if not _is_unavailable_error(exc):
+                    raise
+                if tentativa + 1 < tentativas:
+                    time.sleep(2)
 
-                if _is_model_not_found_error(exc):
-                    break
-
-                if _is_retryable_error(exc):
-                    if tentativa + 1 < tentativas:
-                        time.sleep(1)
-                    continue
-
-                raise
+        print(f"Gemini: modelo {modelo} indisponível; tentando fallback...")
 
     raise RuntimeError(f"Gemini indisponível temporariamente. Último erro: {ultimo_erro}")
