@@ -17,8 +17,6 @@ Se não houver uma data explícita, use a data informada no campo data_atual.
 Não invente valor. Se não conseguir identificar claramente um gasto, retorne {"erro": "nao_identificado"}.
 """
 
-# O primeiro modelo vem do .env. Os seguintes servem como fallback caso o
-# modelo principal esteja temporariamente indisponível (503/high demand).
 FALLBACK_MODELS = [
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash-lite",
@@ -56,25 +54,26 @@ def extrair_gasto(mensagem: str = "", audio_bytes: bytes | None = None, audio_mi
     ultimo_erro = None
 
     for indice, modelo in enumerate(modelos):
-        # Faz até 2 tentativas no modelo principal antes de trocar de modelo.
         tentativas = 2 if indice == 0 else 1
         for tentativa in range(tentativas):
             try:
-                print(f"Gemini: tentando modelo {modelo} (tentativa {tentativa + 1}/{tentativas})")
+                print(f"Gemini: {modelo} ({tentativa + 1}/{tentativas})")
                 response = client.models.generate_content(
                     model=modelo,
                     contents=contents,
-                    config={"response_mime_type": "application/json"},
+                    config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0,
+                        "max_output_tokens": 120,
+                    },
                 )
                 return _processar_resposta(response)
             except Exception as exc:
                 ultimo_erro = exc
-                print(f"Gemini: erro no modelo {modelo}: {exc}")
+                print(f"Gemini: erro: {exc}")
                 if not _is_unavailable_error(exc):
                     raise
                 if tentativa + 1 < tentativas:
-                    time.sleep(2)
-
-        print(f"Gemini: modelo {modelo} indisponível; tentando fallback...")
+                    time.sleep(1)
 
     raise RuntimeError(f"Gemini indisponível temporariamente. Último erro: {ultimo_erro}")
