@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MeuGasto</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#f5f7fb;color:#172033}main{max-width:1050px;margin:0 auto;padding:40px 20px}.hero{margin-bottom:28px}.hero h1{font-size:38px;margin:0 0 8px}.hero p{color:#687386;margin:0}.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:28px}.card{background:white;border:1px solid #e7eaf0;border-radius:18px;padding:22px}.label{color:#687386;font-size:14px}.value{font-size:30px;font-weight:750;margin-top:8px}.table{background:white;border:1px solid #e7eaf0;border-radius:18px;overflow:hidden}.table h2{padding:20px;margin:0;border-bottom:1px solid #eee;font-size:19px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:15px 20px;border-bottom:1px solid #f0f1f4}th{font-size:13px;color:#687386}td{font-size:14px}.empty{padding:30px;color:#687386}@media(max-width:650px){.cards{grid-template-columns:1fr}main{padding:25px 14px}.hero h1{font-size:30px}table{font-size:12px}th,td{padding:12px}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <h1>MeuGasto 💰</h1>
+    <p>Registre seus gastos pelo WhatsApp e acompanhe tudo aqui.</p>
+  </section>
+  <section class="cards">
+    <div class="card"><div class="label">Total registrado</div><div class="value">R$ {{ total|floatformat:2 }}</div></div>
+    <div class="card"><div class="label">Gastos hoje</div><div class="value">R$ {{ hoje|floatformat:2 }}</div></div>
+  </section>
+  <section class="table">
+    <h2>Últimos gastos</h2>
+    {% if gastos %}<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead><tbody>{% for gasto in gastos %}<tr><td>{{ gasto.data|date:"d/m/Y" }}</td><td>{{ gasto.descricao }}</td><td>{{ gasto.get_categoria_display }}</td><td>R$ {{ gasto.valor|floatformat:2 }}</td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty">Nenhum gasto registrado ainda.</div>{% endif %}
+  </section>
+</main>
+</body>
+</html>
