@@ -21,15 +21,19 @@ client.on('message', async (message) => {
       message: message.body || '',
     };
 
-    // Mensagens de voz são baixadas pelo WhatsApp Web e enviadas ao Django
-    // como base64. O Gemini interpreta o áudio diretamente.
     if (message.hasMedia) {
+      console.log('Mídia recebida. Baixando áudio...');
       const media = await message.downloadMedia();
+      console.log('MIME recebido:', media?.mimetype);
+
       if (media && media.mimetype && media.mimetype.startsWith('audio/')) {
         const audioBuffer = Buffer.from(media.data, 'base64');
+        console.log('Áudio baixado:', audioBuffer.length, 'bytes');
+
         if (audioBuffer.length <= 10 * 1024 * 1024) {
           payload.audio_base64 = media.data;
-          payload.audio_mimetype = media.mimetype;
+          // O Gemini aceita audio/ogg para OGG Vorbis.
+          payload.audio_mimetype = media.mimetype.split(';')[0].trim();
         } else {
           await message.reply('O áudio é muito grande. Envie uma mensagem de voz menor.');
           return;
@@ -42,14 +46,22 @@ client.on('message', async (message) => {
       return;
     }
 
+    console.log('Enviando para Django...');
     const { data } = await axios.post(WEBHOOK_URL, payload, {
-      maxContentLength: 12 * 1024 * 1024,
-      maxBodyLength: 12 * 1024 * 1024,
+      maxContentLength: 20 * 1024 * 1024,
+      maxBodyLength: 20 * 1024 * 1024,
+      timeout: 120000,
     });
 
+    console.log('Resposta do Django:', data);
     if (data.resposta) await message.reply(data.resposta);
   } catch (error) {
-    console.error('Erro no webhook:', error.response?.data || error.message);
+    console.error('========== ERRO NO WEBHOOK ==========');
+    console.error('Mensagem:', error.message);
+    console.error('Status:', error.response?.status);
+    console.error('Resposta:', error.response?.data);
+    console.error('Stack:', error.stack);
+    console.error('=====================================');
     await message.reply('Não consegui registrar seu gasto agora. Tente novamente.');
   }
 });
