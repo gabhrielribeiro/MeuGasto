@@ -16,14 +16,14 @@
   <section class="panel budget {% if disponivel < 0 %}bad{% else %}good{% endif %}">
     <div class="row"><span class="label">ORÇAMENTO ACUMULADO</span><span class="status">{% if disponivel < 0 %}Acima do orçamento{% else %}Dentro do orçamento{% endif %}</span></div>
     <div class="value {% if disponivel < 0 %}negative{% else %}positive{% endif %}">R$ {{ disponivel|floatformat:2 }}</div>
-    <p class="muted">{% if disponivel < 0 %}Você ultrapassou o orçamento em R$ {{ disponivel|stringformat:".2f"|cut:"-" }}.{% else %}Esse é o valor disponível considerando os dias acumulados.{% endif %}</p>
+    <p class="muted">{% if disponivel < 0 %}Você ultrapassou o orçamento. {% else %}Esse é o valor disponível considerando os dias acumulados.{% endif %}</p>
     <div class="bar"><div class="fill" style="width:{{ percentual }}%"></div></div>
     <div class="row"><span class="label">Limite diário: R$ {{ orcamento.limite_diario|floatformat:2 }}</span><span class="label">Acumulado: R$ {{ acumulado|floatformat:2 }}</span></div>
-    <form method="post" class="form"><input name="limite_diario" type="number" step="0.01" min="0.01" placeholder="Novo limite diário"><button type="submit">Atualizar</button></form>
+    <form method="post" class="form">{% csrf_token %}<input name="limite_diario" type="number" step="0.01" min="0.01" placeholder="Novo limite diário"><button type="submit">Atualizar</button></form>
     {% if erro_orcamento %}<div class="error">{{ erro_orcamento }}</div>{% endif %}
   </section>
   {% else %}
-  <section class="panel"><h2>Configure seu orçamento</h2><p class="muted">Defina quanto você pode gastar por dia para começar.</p><form method="post" class="form"><input name="limite_diario" type="number" step="0.01" min="0.01" placeholder="Ex.: 20,00" required><button type="submit">Começar</button></form>{% if erro_orcamento %}<div class="error">{{ erro_orcamento }}</div>{% endif %}</section>
+  <section class="panel"><h2>Configure seu orçamento</h2><p class="muted">Defina quanto você pode gastar por dia para começar.</p><form method="post" class="form">{% csrf_token %}<input name="limite_diario" type="number" step="0.01" min="0.01" placeholder="Ex.: 20,00" required><button type="submit">Começar</button></form>{% if erro_orcamento %}<div class="error">{{ erro_orcamento }}</div>{% endif %}</section>
   {% endif %}
 
   <section class="grid"><div class="card"><div class="label">TOTAL REGISTRADO</div><div class="value">R$ {{ total|floatformat:2 }}</div></div><div class="card"><div class="label">GASTOS DE HOJE</div><div class="value">R$ {{ hoje|floatformat:2 }}</div></div></section>
