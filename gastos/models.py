@@ -27,3 +27,19 @@ class Gasto(models.Model):
 
     def __str__(self):
         return f"R$ {self.valor} - {self.descricao}"
+
+
+class Orcamento(models.Model):
+    limite_diario = models.DecimalField(max_digits=10, decimal_places=2)
+    data_inicio = models.DateField()
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+
+    @classmethod
+    def atual(cls):
+        return cls.objects.first()
+
+    def __str__(self):
+        return f"R$ {self.limite_diario} por dia"
