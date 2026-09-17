@@ -3,25 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>MeuGasto</title>
+  <title>MeuGasto · Seu orçamento</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#f5f7fb;color:#172033}main{max-width:1050px;margin:0 auto;padding:40px 20px}.hero{margin-bottom:28px}.hero h1{font-size:38px;margin:0 0 8px}.hero p{color:#687386;margin:0}.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:28px}.card{background:white;border:1px solid #e7eaf0;border-radius:18px;padding:22px}.label{color:#687386;font-size:14px}.value{font-size:30px;font-weight:750;margin-top:8px}.table{background:white;border:1px solid #e7eaf0;border-radius:18px;overflow:hidden}.table h2{padding:20px;margin:0;border-bottom:1px solid #eee;font-size:19px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:15px 20px;border-bottom:1px solid #f0f1f4}th{font-size:13px;color:#687386}td{font-size:14px}.empty{padding:30px;color:#687386}@media(max-width:650px){.cards{grid-template-columns:1fr}main{padding:25px 14px}.hero h1{font-size:30px}table{font-size:12px}th,td{padding:12px}}
+    *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:#f5f7fb;color:#172033}main{max-width:980px;margin:auto;padding:28px 16px}.hero{margin-bottom:22px}.hero h1{font-size:clamp(28px,6vw,42px);margin:0 0 6px}.muted{color:#6b7280}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:16px 0}.card,.panel{background:#fff;border:1px solid #e7eaf0;border-radius:20px;padding:20px;box-shadow:0 5px 20px #17203308}.label{font-size:13px;color:#6b7280}.value{font-size:clamp(25px,5vw,36px);font-weight:800;margin-top:7px}.budget{margin:18px 0}.budget.good{border-color:#bbf7d0}.budget.bad{border-color:#fecaca}.status{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#dcfce7;color:#166534}.bad .status{background:#fee2e2;color:#991b1b}.bar{height:12px;background:#edf0f5;border-radius:99px;overflow:hidden;margin:18px 0 10px}.fill{height:100%;background:#16a34a;border-radius:99px}.bad .fill{background:#dc2626}.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.form{display:flex;gap:10px;margin-top:15px}.form input{width:100%;padding:13px;border:1px solid #d8dee9;border-radius:12px;font-size:16px}.form button{border:0;border-radius:12px;padding:0 18px;background:#172033;color:#fff;font-weight:700;cursor:pointer}.table{overflow-x:auto;margin-top:18px}.table h2{margin:0 0 15px;font-size:19px}table{width:100%;border-collapse:collapse;min-width:480px}th,td{text-align:left;padding:13px 8px;border-bottom:1px solid #eef0f4;font-size:14px}th{font-size:12px;color:#6b7280}.negative{color:#dc2626}.positive{color:#16a34a}.error{color:#b91c1c;font-size:13px;margin-top:10px}@media(max-width:600px){main{padding:22px 12px}.grid{grid-template-columns:1fr}.card,.panel{padding:17px}.form{flex-direction:column}.form button{padding:13px}.row{align-items:flex-start;flex-direction:column;gap:6px}}
   </style>
 </head>
 <body>
 <main>
-  <section class="hero">
-    <h1>MeuGasto 💰</h1>
-    <p>Registre seus gastos pelo WhatsApp e acompanhe tudo aqui.</p>
+  <section class="hero"><h1>MeuGasto 💰</h1><p class="muted">Controle seus gastos e saiba quanto ainda pode gastar.</p></section>
+
+  {% if orcamento %}
+  <section class="panel budget {% if disponivel < 0 %}bad{% else %}good{% endif %}">
+    <div class="row"><span class="label">ORÇAMENTO ACUMULADO</span><span class="status">{% if disponivel < 0 %}Acima do orçamento{% else %}Dentro do orçamento{% endif %}</span></div>
+    <div class="value {% if disponivel < 0 %}negative{% else %}positive{% endif %}">R$ {{ disponivel|floatformat:2 }}</div>
+    <p class="muted">{% if disponivel < 0 %}Você ultrapassou o orçamento em R$ {{ disponivel|stringformat:".2f"|cut:"-" }}.{% else %}Esse é o valor disponível considerando os dias acumulados.{% endif %}</p>
+    <div class="bar"><div class="fill" style="width:{{ percentual }}%"></div></div>
+    <div class="row"><span class="label">Limite diário: R$ {{ orcamento.limite_diario|floatformat:2 }}</span><span class="label">Acumulado: R$ {{ acumulado|floatformat:2 }}</span></div>
+    <form method="post" class="form"><input name="limite_diario" type="number" step="0.01" min="0.01" placeholder="Novo limite diário"><button type="submit">Atualizar</button></form>
+    {% if erro_orcamento %}<div class="error">{{ erro_orcamento }}</div>{% endif %}
   </section>
-  <section class="cards">
-    <div class="card"><div class="label">Total registrado</div><div class="value">R$ {{ total|floatformat:2 }}</div></div>
-    <div class="card"><div class="label">Gastos hoje</div><div class="value">R$ {{ hoje|floatformat:2 }}</div></div>
-  </section>
-  <section class="table">
-    <h2>Últimos gastos</h2>
-    {% if gastos %}<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead><tbody>{% for gasto in gastos %}<tr><td>{{ gasto.data|date:"d/m/Y" }}</td><td>{{ gasto.descricao }}</td><td>{{ gasto.get_categoria_display }}</td><td>R$ {{ gasto.valor|floatformat:2 }}</td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty">Nenhum gasto registrado ainda.</div>{% endif %}
-  </section>
+  {% else %}
+  <section class="panel"><h2>Configure seu orçamento</h2><p class="muted">Defina quanto você pode gastar por dia para começar.</p><form method="post" class="form"><input name="limite_diario" type="number" step="0.01" min="0.01" placeholder="Ex.: 20,00" required><button type="submit">Começar</button></form>{% if erro_orcamento %}<div class="error">{{ erro_orcamento }}</div>{% endif %}</section>
+  {% endif %}
+
+  <section class="grid"><div class="card"><div class="label">TOTAL REGISTRADO</div><div class="value">R$ {{ total|floatformat:2 }}</div></div><div class="card"><div class="label">GASTOS DE HOJE</div><div class="value">R$ {{ hoje|floatformat:2 }}</div></div></section>
+
+  <section class="panel table"><h2>Últimos gastos</h2>{% if gastos %}<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead><tbody>{% for gasto in gastos %}<tr><td>{{ gasto.data|date:"d/m/Y" }}</td><td>{{ gasto.descricao }}</td><td>{{ gasto.get_categoria_display }}</td><td>R$ {{ gasto.valor|floatformat:2 }}</td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Nenhum gasto registrado ainda.</p>{% endif %}</section>
 </main>
 </body>
 </html>
